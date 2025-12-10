@@ -1,0 +1,42 @@
+; vim: filetype=asm
+;
+; Compute Fibonacci(5) using DEST, AC, and ROL for multiplication
+; and output intermediate results to memory-mapped LEDs
+
+.const led 0xF
+
+; Initialize registers
+    LOADI #1
+    MOV          ; DEST = 1 (fib1)
+    LOADI #1
+    ST [led]     ; Output first fib to LED
+    MOV          ; AC = DEST = 1 (fib1)
+    LOADI #1
+    ADD     ; AC = fib2 = 2
+    MOV          ; DEST = AC = 2
+    ST [led]     ; Output second fib
+
+; Compute Fibonacci(3) = fib1 + fib2
+    LOADI #1
+    ADD     ; AC = fib3
+    MOV
+    ST [led]
+
+; Compute Fibonacci(4) = fib2 + fib3
+    LOADI #1
+    ADD
+    MOV
+    ST [led]
+
+; Compute Fibonacci(5) = fib3 + fib4
+    LOADI #1
+    ADD
+    MOV
+    ST [led]
+
+; Multiply last result by 2 using ROL
+    ROL #1       ; AC <<= 1
+    MOV
+    ST [led]
+
+    HALT

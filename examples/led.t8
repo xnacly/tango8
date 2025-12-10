@@ -19,3 +19,5 @@
 ; 8 leds mapped at 'led'
     LOADI #0xD  ; 0b00001101
     ST [led]    ; LEDs 0,2,3 on
+
+    HALT

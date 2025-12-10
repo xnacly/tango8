@@ -1,0 +1,30 @@
+; vim: filetype=asm
+;
+; easiest math example i could think of
+;
+; Assemble via: cargo run -p t8asm examples/math.t8
+; Emulate via: cargo run -p t8emu examples/math.t8b
+
+.const val5 5
+.const val3 3
+.const val2 2
+
+; Load 5 into AC and move to DEST
+    LOADI #val5
+    MOV
+
+; Multiply by 3 via repeated addition
+    LOADI #val5
+    ADD         ; AC + DEST -> DEST  (DEST = 5 + 5 = 10)
+    ADD         ; AC + DEST -> DEST  (DEST = 5 + 10 = 15)
+
+; Add 2
+    LOADI #val2
+    ADD         ; DEST = 2 + 15 = 17
+
+; Rotate left 1 to multiply by 2
+    LOADI #0x1
+    ROL #1      ; AC = 0x1 rotated left 1 -> 0x2
+    ADD         ; DEST = 17 + 2 = 19
+
+    HALT
