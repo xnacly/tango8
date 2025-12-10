@@ -31,7 +31,7 @@ pub enum Node<'node> {
         /// partial since this does not include inner values, only the name -> instruction lookup
         /// is done at this point
         partial: Instruction,
-        rhs: Box<Node<'node>>,
+        rhs: Option<Box<Node<'node>>>,
     },
     /// #<literal>
     Literal(Box<Node<'node>>),
@@ -85,10 +85,14 @@ impl<'parser> Parser<'parser> {
             Token::Ident(ident) => {
                 // skip self
                 self.advance();
-                Node::Instruction {
-                    partial: Instruction::from_str_lossy(str::from_utf8(ident).unwrap())?,
-                    rhs: Box::new(self.parse_one()?),
-                }
+                let partial = Instruction::from_str_lossy(str::from_utf8(ident).unwrap())?;
+                let rhs = match &partial {
+                    Instruction::LOADI { .. }
+                    | Instruction::ST { .. }
+                    | Instruction::ROL { .. } => Some(Box::new(self.parse_one()?)),
+                    _ => None,
+                };
+                Node::Instruction { partial, rhs }
             }
             Token::Hash => {
                 // skip #
