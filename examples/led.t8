@@ -1,0 +1,21 @@
+; vim: filetype=asm
+; 
+; simple example of blinking an io mapped led, either single or 8bit addressed
+; via 1 byte led array. 
+;
+; Assemble via: cargo run -p t8asm examples/led.t8
+; Emulate via: cargo run -p t8emu examples/led.t8b
+
+.const led 0xF
+.const off 0
+.const on 1
+
+; simple on/off LED
+    LOADI #off
+    ST [led]
+    LOADI #on
+    ST [led]
+
+; 8 leds mapped at 'led'
+    LOADI #0xD  ; 0b00001101
+    ST [led]    ; LEDs 0,2,3 on
