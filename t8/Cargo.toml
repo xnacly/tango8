@@ -1,0 +1,7 @@
+[package]
+name = "t8"
+description = "shared logic, datatypes and tests for t8cpu"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]

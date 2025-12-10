@@ -1,0 +1,8 @@
+[package]
+name = "t8asm"
+description = "t8cpu assembler"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+t8 = { path = "../t8" }

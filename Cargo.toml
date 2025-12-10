@@ -1,0 +1,7 @@
+[workspace]
+resolver = "3"
+members = [
+    "t8",
+    "t8asm",
+    "t8emu",
+]
