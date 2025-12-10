@@ -1,0 +1,19 @@
+# configure the t8 emulator and assembler
+[cpu]
+verbose = true
+
+[memory]
+size = 256 # in bytes
+
+[io]
+[io.led] # register a memory mapped LED
+addr = 0xF # allow the guest to write to 0xF
+file = "led.log" # and forward all writes to led.log
+
+[io.stdout]
+addr = 0x1
+file = "stdout.log"
+
+[io.stderr]
+addr = 0x2
+file = "stderr.log"

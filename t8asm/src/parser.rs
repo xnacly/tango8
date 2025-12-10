@@ -86,7 +86,7 @@ impl<'parser> Parser<'parser> {
                 // skip self
                 self.advance();
                 Node::Instruction {
-                    partial: Instruction::from_str(str::from_utf8(ident).unwrap())?,
+                    partial: Instruction::from_str_lossy(str::from_utf8(ident).unwrap())?,
                     rhs: Box::new(self.parse_one()?),
                 }
             }

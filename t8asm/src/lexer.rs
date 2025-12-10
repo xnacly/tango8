@@ -71,11 +71,11 @@ impl<'lex> Lexer<'lex> {
                 ' ' => self.advance(),
                 '.' => {
                     self.advance();
-                    if !matches!(self.cur() as char, 'a'..='z' | 'A'..='Z') {
-                        return Err(format!("A '.' requires a following builtin name"));
+                    if !self.cur().is_ascii_alphabetic() {
+                        return Err("A '.' requires a following builtin name".into());
                     }
                     let start = self.pos;
-                    while matches!(self.cur() as char, 'a'..='z' | 'A'..='Z'|'-'|'_' ) {
+                    while self.cur().is_ascii_alphabetic() {
                         self.advance()
                     }
                     toks.push(Token::Builtin(&self.src[start..self.pos]))
@@ -93,7 +93,7 @@ impl<'lex> Lexer<'lex> {
                     toks.push(Token::RightBraket);
                     self.advance()
                 }
-                '0'..'9' => {
+                '0'..='9' => {
                     let start = self.pos;
                     while !self.cur().is_ascii_whitespace() {
                         self.advance()
@@ -103,14 +103,14 @@ impl<'lex> Lexer<'lex> {
                     let i = if view.get(1).is_some_and(|e| *e == b'x') {
                         usize::from_str_radix(&as_str[2..as_str.len()], 16)
                     } else {
-                        usize::from_str_radix(as_str, 10)
+                        as_str.parse()
                     }
                     .map_err(|e| format!("{e}: `{as_str}`"))?;
                     toks.push(Token::Number(i))
                 }
                 'a'..='z' | 'A'..='Z' => {
                     let start = self.pos;
-                    while matches!(self.cur() as char, 'a'..='z' | 'A'..='Z'|'-'|'_' ) {
+                    while self.cur().is_ascii_alphabetic() {
                         self.advance()
                     }
                     toks.push(Token::Ident(&self.src[start..self.pos]))
@@ -136,16 +136,27 @@ mod tests {
     #[test]
     fn test_lexer_sequence() {
         let src = br#"
+; vim: filetype=asm
+; 
+; simple example of blinking an io mapped led, either single or 8bit addressed
+; via 1 byte led array. 
+;
+; Assemble via: cargo run -p t8asm examples/led.t8
+; Emulate via: cargo run -p t8emu examples/led.t8b
+
 .const led 0xF
 .const off 0
 .const on 1
 
-LOADI #off
-ST [led]
-LOADI #on
-ST [led]
-LOADI #0xD
-ST [led]
+; simple on/off LED
+    LOADI #off
+    ST [led]
+    LOADI #on
+    ST [led]
+
+; 8 leds mapped at 'led'
+    LOADI #0xD  ; 0b00001101
+    ST [led]    ; LEDs 0,2,3 on
 "#;
 
         let mut lexer = Lexer::new(src);

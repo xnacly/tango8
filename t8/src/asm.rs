@@ -26,7 +26,7 @@ impl Instruction {
 
     /// this is lossy, meaning there is only support for looking instructions up by their textual
     /// representation, for instance LOADI. LOADI #5 will result in "Invalid instruction".
-    pub fn from_str(s: &str) -> Result<Self, String> {
+    pub fn from_str_lossy(s: &str) -> Result<Self, String> {
         Ok(match s {
             "NOP" => Self::NOP,
             "LOADI" => Self::LOADI { imm: 0 },
@@ -65,9 +65,9 @@ impl TryFrom<u8> for Instruction {
     }
 }
 
-impl Into<u8> for Instruction {
-    fn into(self) -> u8 {
-        self.encode()
+impl From<Instruction> for u8 {
+    fn from(value: Instruction) -> Self {
+        value.encode()
     }
 }
 
