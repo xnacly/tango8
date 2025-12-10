@@ -1,6 +1,6 @@
 # tango8
 
-> 8-bit accumulator-based CPU designed for educational and hobbyist hardware projects.
+> 8-bit accumulator-based CPU and tooling designed for educational and hobbyist hardware projects without going insane. 
 
 ## Overview
 
