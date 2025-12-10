@@ -14,7 +14,7 @@ pub enum Token<'tok> {
     Hash,
     LeftBraket,
     RightBraket,
-    Number(usize),
+    Number(u8),
 }
 
 impl<'tok> fmt::Debug for Token<'tok> {
@@ -101,7 +101,7 @@ impl<'lex> Lexer<'lex> {
                     let view = &self.src[start..self.pos];
                     let as_str = str::from_utf8(view).expect("Wtf");
                     let i = if view.get(1).is_some_and(|e| *e == b'x') {
-                        usize::from_str_radix(&as_str[2..as_str.len()], 16)
+                        u8::from_str_radix(&as_str[2..as_str.len()], 16)
                     } else {
                         as_str.parse()
                     }

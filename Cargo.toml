@@ -2,6 +2,6 @@
 resolver = "3"
 members = [
     "t8",
-    "t8asm",
+    "t8asm", "t8dis",
     "t8emu",
 ]

@@ -11,10 +11,11 @@
 .const on 1
 
 ; simple on/off LED
-    LOADI #off
-    ST [led]
     LOADI #on
     ST [led]
+    LOADI #off
+    ST [led]
+    HALT
 
 ; 8 leds mapped at 'led'
     LOADI #0xD  ; 0b00001101

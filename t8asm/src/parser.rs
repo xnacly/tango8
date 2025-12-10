@@ -37,7 +37,7 @@ pub enum Node<'node> {
     Literal(Box<Node<'node>>),
     /// [<addr>]
     Addr(Box<Node<'node>>),
-    Number(usize),
+    Number(u8),
     Ident(&'node str),
 }
 
@@ -76,10 +76,27 @@ impl<'parser> Parser<'parser> {
                 // skip lhs
                 self.advance();
 
+                let kind = name.try_into()?;
+
+                let rhs = match kind {
+                    Builtin::Const => match self.cur() {
+                        Token::Number(n) => Node::Number(*n),
+                        _ => {
+                            return Err(format!(
+                                "Invalid rhs for .const {:?}, wanted number",
+                                self.cur()
+                            ));
+                        }
+                    },
+                };
+
+                // skip argument
+                self.advance();
+
                 Node::Builtin {
-                    kind: name.try_into()?,
+                    kind,
                     lhs,
-                    rhs: Box::new(self.parse_one()?),
+                    rhs: Box::new(rhs),
                 }
             }
             Token::Ident(ident) => {
@@ -147,7 +164,7 @@ impl<'parser> Parser<'parser> {
     pub fn parse(&mut self) -> Result<Vec<Node<'parser>>, String> {
         let mut r = vec![];
         while !self.end() {
-            r.push(dbg!(self.parse_one()?));
+            r.push(self.parse_one()?);
         }
         Ok(r)
     }
