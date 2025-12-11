@@ -1,5 +1,7 @@
 use core::fmt;
 
+use shared::err::T8Err;
+
 pub struct Lexer<'lex> {
     src: &'lex [u8],
     pos: usize,
@@ -7,8 +9,15 @@ pub struct Lexer<'lex> {
     col: usize,
 }
 
+#[derive(PartialEq, Eq, Clone, Copy, Debug)]
+pub struct Token<'tok> {
+    pub line: usize,
+    pub col: usize,
+    pub inner: TokenInner<'tok>,
+}
+
 #[derive(PartialEq, Eq, Clone, Copy)]
-pub enum Token<'tok> {
+pub enum TokenInner<'tok> {
     Ident(&'tok [u8]),
     Builtin(&'tok [u8]),
     Hash,
@@ -17,15 +26,15 @@ pub enum Token<'tok> {
     Number(u8),
 }
 
-impl<'tok> fmt::Debug for Token<'tok> {
+impl<'tok> fmt::Debug for TokenInner<'tok> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Token::Ident(name) => write!(f, "Ident({})", String::from_utf8_lossy(name)),
-            Token::Builtin(name) => write!(f, "Builtin({})", String::from_utf8_lossy(name)),
-            Token::Hash => write!(f, "Hash"),
-            Token::LeftBraket => write!(f, "LeftBracket"),
-            Token::RightBraket => write!(f, "RightBracket"),
-            Token::Number(n) => write!(f, "Number({})", n),
+            TokenInner::Ident(name) => write!(f, "Ident({})", String::from_utf8_lossy(name)),
+            TokenInner::Builtin(name) => write!(f, "Builtin({})", String::from_utf8_lossy(name)),
+            TokenInner::Hash => write!(f, "Hash"),
+            TokenInner::LeftBraket => write!(f, "LeftBracket"),
+            TokenInner::RightBraket => write!(f, "RightBracket"),
+            TokenInner::Number(n) => write!(f, "Number({})", n),
         }
     }
 }
@@ -37,6 +46,22 @@ impl<'lex> Lexer<'lex> {
             line: 0,
             pos: 0,
             col: 0,
+        }
+    }
+
+    fn tok(&self, inner: TokenInner<'lex>) -> Token<'lex> {
+        Token {
+            line: self.line,
+            col: self.col,
+            inner,
+        }
+    }
+
+    fn err<S: Into<String>>(&self, msg: S) -> T8Err {
+        T8Err {
+            line: self.line,
+            col: self.col,
+            msg: msg.into(),
         }
     }
 
@@ -53,7 +78,7 @@ impl<'lex> Lexer<'lex> {
         self.col += 1
     }
 
-    pub fn lex(&mut self) -> Result<Vec<Token<'lex>>, String> {
+    pub fn lex(&mut self) -> Result<Vec<Token<'lex>>, T8Err> {
         let mut toks = vec![];
         while !self.end() {
             let Some(c) = self.cur() else {
@@ -75,25 +100,25 @@ impl<'lex> Lexer<'lex> {
                 '.' => {
                     self.advance();
                     if !self.cur().is_some_and(|b| b.is_ascii_alphabetic()) {
-                        return Err("A '.' requires a following builtin name".into());
+                        return Err(self.err("A '.' requires a following builtin name"));
                     }
                     let start = self.pos;
                     while self.cur().is_some_and(|b| b.is_ascii_alphabetic()) {
                         self.advance()
                     }
-                    toks.push(Token::Builtin(&self.src[start..self.pos]))
+                    toks.push(self.tok(TokenInner::Builtin(&self.src[start..self.pos])))
                 }
                 '#' => {
-                    toks.push(Token::Hash);
+                    toks.push(self.tok(TokenInner::Hash));
                     self.advance()
                 }
                 '[' => {
-                    toks.push(Token::LeftBraket);
+                    toks.push(self.tok(TokenInner::LeftBraket));
                     self.advance()
                 }
 
                 ']' => {
-                    toks.push(Token::RightBraket);
+                    toks.push(self.tok(TokenInner::RightBraket));
                     self.advance()
                 }
                 '0'..='9' => {
@@ -105,30 +130,28 @@ impl<'lex> Lexer<'lex> {
                         self.advance()
                     }
                     let view = &self.src[start..self.pos];
-                    let as_str =
-                        str::from_utf8(view).map_err(|_| "Failed to call str::from_utf8")?;
+                    let as_str = str::from_utf8(view)
+                        .map_err(|_| self.err("Failed to call str::from_utf8"))?;
                     let i = if view.get(1).is_some_and(|e| *e == b'x') {
                         u8::from_str_radix(&as_str[2..as_str.len()], 16)
                     } else {
                         as_str.parse()
                     }
-                    .map_err(|e| format!("{e}: `{as_str}`"))?;
-                    toks.push(Token::Number(i))
+                    .map_err(|e| self.err(format!("{e}: `{as_str}`")))?;
+                    toks.push(self.tok(TokenInner::Number(i)))
                 }
                 'a'..='z' | 'A'..='Z' => {
                     let start = self.pos;
                     while self.cur().is_some_and(|b| b.is_ascii_alphabetic()) {
                         self.advance()
                     }
-                    toks.push(Token::Ident(&self.src[start..self.pos]))
+                    toks.push(self.tok(TokenInner::Ident(&self.src[start..self.pos])))
                 }
                 _ => {
-                    return Err(format!(
-                        "Unkown character {:?} {}:{}",
-                        self.cur().map(|b| *b as char),
-                        self.line,
-                        self.col
-                    ));
+                    return Err(self.err(format!(
+                        "Unkown character `{}`",
+                        self.cur().map(|b| *b as char).unwrap(),
+                    )));
                 }
             }
         }
@@ -170,36 +193,36 @@ mod tests {
         let tokens = lexer.lex().expect("Lexer failed");
 
         let expected = vec![
-            Token::Builtin(b"const"),
-            Token::Ident(b"led"),
-            Token::Number(0xF),
-            Token::Builtin(b"const"),
-            Token::Ident(b"off"),
-            Token::Number(0),
-            Token::Builtin(b"const"),
-            Token::Ident(b"on"),
-            Token::Number(1),
-            Token::Ident(b"LOADI"),
-            Token::Hash,
-            Token::Ident(b"off"),
-            Token::Ident(b"ST"),
-            Token::LeftBraket,
-            Token::Ident(b"led"),
-            Token::RightBraket,
-            Token::Ident(b"LOADI"),
-            Token::Hash,
-            Token::Ident(b"on"),
-            Token::Ident(b"ST"),
-            Token::LeftBraket,
-            Token::Ident(b"led"),
-            Token::RightBraket,
-            Token::Ident(b"LOADI"),
-            Token::Hash,
-            Token::Number(0xD),
-            Token::Ident(b"ST"),
-            Token::LeftBraket,
-            Token::Ident(b"led"),
-            Token::RightBraket,
+            TokenInner::Builtin(b"const"),
+            TokenInner::Ident(b"led"),
+            TokenInner::Number(0xF),
+            TokenInner::Builtin(b"const"),
+            TokenInner::Ident(b"off"),
+            TokenInner::Number(0),
+            TokenInner::Builtin(b"const"),
+            TokenInner::Ident(b"on"),
+            TokenInner::Number(1),
+            TokenInner::Ident(b"LOADI"),
+            TokenInner::Hash,
+            TokenInner::Ident(b"off"),
+            TokenInner::Ident(b"ST"),
+            TokenInner::LeftBraket,
+            TokenInner::Ident(b"led"),
+            TokenInner::RightBraket,
+            TokenInner::Ident(b"LOADI"),
+            TokenInner::Hash,
+            TokenInner::Ident(b"on"),
+            TokenInner::Ident(b"ST"),
+            TokenInner::LeftBraket,
+            TokenInner::Ident(b"led"),
+            TokenInner::RightBraket,
+            TokenInner::Ident(b"LOADI"),
+            TokenInner::Hash,
+            TokenInner::Number(0xD),
+            TokenInner::Ident(b"ST"),
+            TokenInner::LeftBraket,
+            TokenInner::Ident(b"led"),
+            TokenInner::RightBraket,
         ];
 
         assert_eq!(
@@ -211,7 +234,7 @@ mod tests {
 
         for (i, (got, exp)) in tokens.iter().zip(expected.iter()).enumerate() {
             assert_eq!(
-                got, exp,
+                got.inner, *exp,
                 "Mismatch at token {}: got {:?}, expected {:?}",
                 i, got, exp
             );
