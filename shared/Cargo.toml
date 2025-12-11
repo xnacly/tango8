@@ -1,5 +1,5 @@
 [package]
-name = "t8"
+name = "shared"
 description = "shared logic, datatypes and tests for t8cpu"
 version = "0.1.0"
 edition = "2024"

@@ -3,26 +3,33 @@
 version = 4
 
 [[package]]
-name = "t8"
-version = "0.1.0"
-
-[[package]]
-name = "t8asm"
+name = "as"
 version = "0.1.0"
 dependencies = [
- "t8",
+ "shared",
 ]
 
 [[package]]
-name = "t8dis"
+name = "dis"
 version = "0.1.0"
 dependencies = [
- "t8",
+ "shared",
 ]
 
 [[package]]
-name = "t8emu"
+name = "emu"
 version = "0.1.0"
 dependencies = [
- "t8",
+ "shared",
 ]
+
+[[package]]
+name = "lisp"
+version = "0.1.0"
+dependencies = [
+ "shared",
+]
+
+[[package]]
+name = "shared"
+version = "0.1.0"

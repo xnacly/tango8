@@ -2,8 +2,8 @@
 ;
 ; easiest math example i could think of
 ;
-; Assemble via: cargo run -p t8asm examples/math.t8
-; Emulate via: cargo run -p t8emu examples/math.t8b
+; Assemble via: cargo run -p as examples/math.t8
+; Emulate via: cargo run -p emu examples/math.t8b
 
 .const val5 5
 .const val3 3

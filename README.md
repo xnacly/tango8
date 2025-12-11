@@ -14,9 +14,10 @@ See [doc](./doc/isa.md) for ISA documentation.
 
 ## Components
 
-- [`asm`](./t8asm) to assemble .t8 files into .t8b binary files
-- [`emu`](./t8asm) to emulate .t8b
-- [`dis`](./t8dis) to disassemble .t8b files, roundtrip with `asm`
+- [`as`](./as):  assemble .t8 files into .t8b binary files
+- [`dis`](./dis): disassemble .t8b files, roundtrip with `asm`
+- [`emu`](./emu): emulate .t8b 
+- [`lisp`](./lisp): minimalist programming language abstraction
 
 ## Usage
 
@@ -45,8 +46,8 @@ file = "led.log" # and forward all writes to led.log
     HALT
 ```
 
-3. Assemble via `cargo run -p t8asm examples/led.t8`.
-4. Execute via `cargo run -p t8emu examples/led.t8.t8b`.
+3. Assemble via `cargo run -p as examples/led.t8`.
+4. Execute via `cargo run -p emu examples/led.t8.t8b`.
 5. Inspect created `led.log` and all bytes send there:
 
 ```
@@ -55,7 +56,7 @@ file = "led.log" # and forward all writes to led.log
 1
 ```
 
-6. Disassemble `led.t8.t8b` via `cargo run -p t8dis examples/led.t8.t8b`:
+6. Disassemble `led.t8.t8b` via `cargo run -p dis examples/led.t8.t8b`:
 
 ```asm
 ; magic=t8cpu

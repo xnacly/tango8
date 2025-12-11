@@ -7,7 +7,7 @@ pub struct Lexer<'lex> {
     col: usize,
 }
 
-#[derive(PartialEq, Eq)]
+#[derive(PartialEq, Eq, Clone, Copy)]
 pub enum Token<'tok> {
     Ident(&'tok [u8]),
     Builtin(&'tok [u8]),
@@ -41,11 +41,11 @@ impl<'lex> Lexer<'lex> {
     }
 
     fn end(&self) -> bool {
-        self.pos >= self.src.len()
+        self.cur().is_none()
     }
 
-    fn cur(&self) -> u8 {
-        self.src[self.pos]
+    fn cur(&self) -> Option<&u8> {
+        self.src.get(self.pos)
     }
 
     fn advance(&mut self) {
@@ -56,26 +56,29 @@ impl<'lex> Lexer<'lex> {
     pub fn lex(&mut self) -> Result<Vec<Token<'lex>>, String> {
         let mut toks = vec![];
         while !self.end() {
-            match self.cur() as char {
+            let Some(c) = self.cur() else {
+                break;
+            };
+
+            match *c as char {
                 ';' => {
-                    while self.cur() != b'\n' {
+                    while self.cur().is_some_and(|b| *b != b'\n') {
                         self.advance();
                     }
                 }
                 '\n' | '\r' => {
                     self.line += 1;
                     self.col = 0;
-
                     self.advance();
                 }
                 ' ' => self.advance(),
                 '.' => {
                     self.advance();
-                    if !self.cur().is_ascii_alphabetic() {
+                    if !self.cur().is_some_and(|b| b.is_ascii_alphabetic()) {
                         return Err("A '.' requires a following builtin name".into());
                     }
                     let start = self.pos;
-                    while self.cur().is_ascii_alphabetic() {
+                    while self.cur().is_some_and(|b| b.is_ascii_alphabetic()) {
                         self.advance()
                     }
                     toks.push(Token::Builtin(&self.src[start..self.pos]))
@@ -95,11 +98,15 @@ impl<'lex> Lexer<'lex> {
                 }
                 '0'..='9' => {
                     let start = self.pos;
-                    while !self.cur().is_ascii_whitespace() {
+                    while self
+                        .cur()
+                        .is_some_and(|b| matches!(b, b'x' | b'0'..=b'9' | b'A'..=b'F'))
+                    {
                         self.advance()
                     }
                     let view = &self.src[start..self.pos];
-                    let as_str = str::from_utf8(view).expect("Wtf");
+                    let as_str =
+                        str::from_utf8(view).map_err(|_| "Failed to call str::from_utf8")?;
                     let i = if view.get(1).is_some_and(|e| *e == b'x') {
                         u8::from_str_radix(&as_str[2..as_str.len()], 16)
                     } else {
@@ -110,7 +117,7 @@ impl<'lex> Lexer<'lex> {
                 }
                 'a'..='z' | 'A'..='Z' => {
                     let start = self.pos;
-                    while self.cur().is_ascii_alphabetic() {
+                    while self.cur().is_some_and(|b| b.is_ascii_alphabetic()) {
                         self.advance()
                     }
                     toks.push(Token::Ident(&self.src[start..self.pos]))
@@ -118,7 +125,7 @@ impl<'lex> Lexer<'lex> {
                 _ => {
                     return Err(format!(
                         "Unkown character {:?} {}:{}",
-                        self.cur() as char,
+                        self.cur().map(|b| *b as char),
                         self.line,
                         self.col
                     ));

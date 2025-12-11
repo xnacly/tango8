@@ -3,8 +3,8 @@
 ; simple example of blinking an io mapped led, either single or 8bit addressed
 ; via 1 byte led array. 
 ;
-; Assemble via: cargo run -p t8asm examples/led.t8
-; Emulate via: cargo run -p t8emu examples/led.t8b
+; Assemble via: cargo run -p as examples/led.t8
+; Emulate via: cargo run -p emu examples/led.t8.t8b
 
 .const led 0xF
 .const off 0

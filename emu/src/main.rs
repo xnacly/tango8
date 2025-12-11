@@ -1,4 +1,4 @@
-use t8::asm;
+use shared::asm;
 
 fn main() {
     println!(
