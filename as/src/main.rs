@@ -38,7 +38,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut ctx = Ctx::new();
     Script::new(&mut buf)?.add_instructions(
         &ast.into_iter()
-            .flat_map(|n| ctx.node_to_instruction(n))
+            .flat_map(|n| {
+                ctx.node_to_instruction(n)
+                    .map_err(|e| {
+                        e.render(&mut stdout(), &lines).unwrap();
+                    })
+                    .expect("Failed to lower ast to instructions")
+            })
             .collect::<Vec<_>>(),
     )?;
 

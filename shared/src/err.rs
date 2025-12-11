@@ -1,4 +1,4 @@
-use std::fmt::{Debug, Display};
+use std::fmt::Debug;
 
 #[derive(Debug)]
 pub struct T8Err {
@@ -8,29 +8,26 @@ pub struct T8Err {
 }
 
 impl T8Err {
-    pub fn render<'r, W: std::io::Write, S: Display>(
+    pub fn render<'r, W, S>(
         &self,
         w: &'r mut W,
         lines: &'r [S],
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        if let Some(prev) = lines.get(self.line - 2) {
-            writeln!(w, "{:02} | {}", self.line - 2, prev)?;
-        }
-        if let Some(prev) = lines.get(self.line - 1) {
-            writeln!(w, "{:02} | {}", self.line - 1, prev)?;
-        }
-        if let Some(cur) = lines.get(self.line) {
-            writeln!(w, "{:02} | {}", self.line, cur)?;
-        }
-        let pad = " ".repeat(self.col - 1);
-        writeln!(w, "   |{pad}^ {} ", self.msg)?;
+    ) -> Result<(), Box<dyn std::error::Error>>
+    where
+        W: std::io::Write,
+        S: std::fmt::Display,
+    {
+        let start = self.line.saturating_sub(2);
+        let end = (self.line + 3).min(lines.len());
 
-        if let Some(after) = lines.get(self.line + 1) {
-            writeln!(w, "{:02} | {}", self.line + 1, after)?;
+        for i in start..end {
+            writeln!(w, "{:02} | {}", i + 1, &lines[i])?;
+            if i == self.line {
+                let pad = " ".repeat(self.col.saturating_sub(1));
+                writeln!(w, "   |{pad}^ {}", self.msg)?;
+            }
         }
-        if let Some(after) = lines.get(self.line + 2) {
-            writeln!(w, "{:02} | {}", self.line + 2, after)?;
-        }
+
         w.flush()?;
         Ok(())
     }

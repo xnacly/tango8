@@ -40,7 +40,10 @@ pub enum Node<'node> {
     /// [<addr>]
     Addr(Box<Node<'node>>),
     Number(u8),
-    Ident(&'node str),
+    Ident {
+        pos: (usize, usize),
+        inner: &'node str,
+    },
 }
 
 pub struct Parser<'parser> {
@@ -79,7 +82,8 @@ impl<'parser> Parser<'parser> {
     }
 
     fn parse_one(&mut self) -> Result<Node<'parser>, T8Err> {
-        Ok(match cur!(self).inner {
+        let Token { inner, line, col } = cur!(self);
+        Ok(match inner {
             TokenInner::Builtin(name) => {
                 let kind = (*name).try_into().map_err(|e| self.err(e))?;
                 // skip .<kind>
@@ -132,7 +136,10 @@ impl<'parser> Parser<'parser> {
                 advance!(self);
                 let inner = match cur!(self).inner {
                     TokenInner::Number(n) => Node::Number(n),
-                    TokenInner::Ident(ident) => Node::Ident(str::from_utf8(ident).unwrap()),
+                    TokenInner::Ident(ident) => Node::Ident {
+                        pos: (line, col),
+                        inner: str::from_utf8(ident).unwrap(),
+                    },
                     _ => {
                         return Err(self.err("Invalid inner literal, wanted ident or number"));
                     }
@@ -146,17 +153,29 @@ impl<'parser> Parser<'parser> {
                 advance!(self);
                 let inner = match cur!(self).inner {
                     TokenInner::Number(n) => Node::Number(n),
-                    TokenInner::Ident(ident) => Node::Ident(str::from_utf8(ident).unwrap()),
+                    TokenInner::Ident(ident) => Node::Ident {
+                        pos: (line, col),
+                        inner: str::from_utf8(ident).unwrap(),
+                    },
                     _ => {
                         return Err(self.err("Invalid inner addr, wanted ident or number"));
                     }
                 };
+
+                let Token { line, col, .. } = cur!(self);
+
                 // skip inner
                 advance!(self);
 
                 let addr = Node::Addr(Box::new(inner));
                 if cur!(self).inner != TokenInner::RightBraket {
-                    return Err(self.err("] needed for addr syntax"));
+                    return Err({
+                        T8Err {
+                            line,
+                            col,
+                            msg: "`]` postfix needed for addr syntax".into(),
+                        }
+                    });
                 }
 
                 // skip ]
@@ -215,7 +234,10 @@ mod tests {
             ast,
             vec![Node::Instruction {
                 partial: Instruction::LOADI { imm: 0 },
-                rhs: Some(Box::new(Node::Literal(Box::new(Node::Ident("foo"))))),
+                rhs: Some(Box::new(Node::Literal(Box::new(Node::Ident {
+                    pos: (0, 0),
+                    inner: "foo"
+                })))),
             }]
         );
     }
@@ -243,7 +265,10 @@ mod tests {
             ast,
             vec![Node::Instruction {
                 partial: Instruction::ST { addr: 0 },
-                rhs: Some(Box::new(Node::Addr(Box::new(Node::Ident("led"))))),
+                rhs: Some(Box::new(Node::Addr(Box::new(Node::Ident {
+                    pos: (0, 0),
+                    inner: "led"
+                })))),
             }]
         );
     }
@@ -284,11 +309,17 @@ HALT
                 },
                 Node::Instruction {
                     partial: Instruction::LOADI { imm: 0 },
-                    rhs: Some(Box::new(Node::Literal(Box::new(Node::Ident("led"))))),
+                    rhs: Some(Box::new(Node::Literal(Box::new(Node::Ident {
+                        pos: (0, 0),
+                        inner: "led"
+                    })))),
                 },
                 Node::Instruction {
                     partial: Instruction::ST { addr: 0 },
-                    rhs: Some(Box::new(Node::Addr(Box::new(Node::Ident("led"))))),
+                    rhs: Some(Box::new(Node::Addr(Box::new(Node::Ident {
+                        pos: (0, 0),
+                        inner: "led"
+                    })))),
                 },
                 Node::Instruction {
                     partial: Instruction::HALT,
