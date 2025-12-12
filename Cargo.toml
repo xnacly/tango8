@@ -5,5 +5,5 @@ members = [
     "as", 
     "dis",
     "emu",
-    "lisp",
+    "cc",
 ]

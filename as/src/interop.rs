@@ -41,17 +41,24 @@ impl<'ctx> Ctx<'ctx> {
                 Ok(None)
             }
             Node::Instruction { partial, rhs } => {
-                let i = match partial {
-                    Instruction::LOADI { .. } => Some(Instruction::LOADI {
-                        imm: self.walk_asm_node(*rhs.unwrap())?,
-                    }),
-                    Instruction::ST { .. } => Some(Instruction::ST {
-                        addr: self.walk_asm_node(*rhs.unwrap())?,
-                    }),
-                    Instruction::ROL { .. } => Some(Instruction::ROL {
-                        imm: self.walk_asm_node(*rhs.unwrap())?,
-                    }),
-                    _ => None,
+                let i = if let Some(rhs) = rhs {
+                    match partial {
+                        Instruction::LOADI { .. } => Some(Instruction::LOADI {
+                            imm: self.walk_asm_node(*rhs)?,
+                        }),
+                        Instruction::ST { .. } => Some(Instruction::ST {
+                            addr: self.walk_asm_node(*rhs)?,
+                        }),
+                        Instruction::LD { .. } => Some(Instruction::LD {
+                            addr: self.walk_asm_node(*rhs)?,
+                        }),
+                        Instruction::ROL { .. } => Some(Instruction::ROL {
+                            imm: self.walk_asm_node(*rhs)?,
+                        }),
+                        _ => None,
+                    }
+                } else {
+                    None
                 };
 
                 Ok(match i {

@@ -82,6 +82,19 @@ impl<'parser> Parser<'parser> {
     }
 
     fn parse_one(&mut self) -> Result<Node<'parser>, T8Err> {
+        if self.end() {
+            let (line, col) = self
+                .src
+                .last()
+                .map(|l| (l.line, l.col))
+                .unwrap_or_else(|| (0, 0));
+
+            return Err(T8Err {
+                line,
+                col,
+                msg: "Unexpected end of input".into(),
+            });
+        }
         let Token { inner, line, col } = cur!(self);
         Ok(match inner {
             TokenInner::Builtin(name) => {
@@ -123,11 +136,18 @@ impl<'parser> Parser<'parser> {
                     .map_err(|e| self.err(e))?;
                 // skip self
                 advance!(self);
+
                 let rhs = match &partial {
                     Instruction::LOADI { .. }
                     | Instruction::ST { .. }
+                    | Instruction::LD { .. }
                     | Instruction::ROL { .. } => Some(Box::new(self.parse_one()?)),
-                    _ => None,
+                    // explicitly None so the compiler wont let me skip this when adding new ones
+                    Instruction::NOP
+                    | Instruction::MOV
+                    | Instruction::ADD
+                    | Instruction::SUB
+                    | Instruction::HALT => None,
                 };
                 Node::Instruction { partial, rhs }
             }
@@ -168,7 +188,13 @@ impl<'parser> Parser<'parser> {
                 advance!(self);
 
                 let addr = Node::Addr(Box::new(inner));
-                if cur!(self).inner != TokenInner::RightBraket {
+                if self.src.get(self.pos)
+                    != Some(&Token {
+                        inner: TokenInner::RightBraket,
+                        line,
+                        col,
+                    })
+                {
                     return Err({
                         T8Err {
                             line,
@@ -235,7 +261,7 @@ mod tests {
             vec![Node::Instruction {
                 partial: Instruction::LOADI { imm: 0 },
                 rhs: Some(Box::new(Node::Literal(Box::new(Node::Ident {
-                    pos: (0, 0),
+                    pos: (0, 6),
                     inner: "foo"
                 })))),
             }]
@@ -266,7 +292,7 @@ mod tests {
             vec![Node::Instruction {
                 partial: Instruction::ST { addr: 0 },
                 rhs: Some(Box::new(Node::Addr(Box::new(Node::Ident {
-                    pos: (0, 0),
+                    pos: (0, 3),
                     inner: "led"
                 })))),
             }]
@@ -310,14 +336,14 @@ HALT
                 Node::Instruction {
                     partial: Instruction::LOADI { imm: 0 },
                     rhs: Some(Box::new(Node::Literal(Box::new(Node::Ident {
-                        pos: (0, 0),
+                        pos: (2, 7),
                         inner: "led"
                     })))),
                 },
                 Node::Instruction {
                     partial: Instruction::ST { addr: 0 },
                     rhs: Some(Box::new(Node::Addr(Box::new(Node::Ident {
-                        pos: (0, 0),
+                        pos: (3, 4),
                         inner: "led"
                     })))),
                 },

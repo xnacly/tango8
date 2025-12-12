@@ -180,9 +180,11 @@ mod tests {
 
 ; simple on/off LED
     LOADI #off
+    LD [led]
     ST [led]
     LOADI #on
     ST [led]
+    
 
 ; 8 leds mapped at 'led'
     LOADI #0xD  ; 0b00001101
@@ -205,6 +207,10 @@ mod tests {
             TokenInner::Ident(b"LOADI"),
             TokenInner::Hash,
             TokenInner::Ident(b"off"),
+            TokenInner::Ident(b"LD"),
+            TokenInner::LeftBraket,
+            TokenInner::Ident(b"led"),
+            TokenInner::RightBraket,
             TokenInner::Ident(b"ST"),
             TokenInner::LeftBraket,
             TokenInner::Ident(b"led"),

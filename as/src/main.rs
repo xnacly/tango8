@@ -20,20 +20,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let bytes = fs::read(&input)?;
     let lines = bytes.lines().flatten().collect::<Vec<_>>();
-    let tokens = match lexer::Lexer::new(&bytes).lex() {
-        Ok(t) => t,
-        Err(e) => {
-            e.render(&mut stdout(), &lines)?;
-            panic!("Failed to tokenize");
-        }
-    };
-    let ast = match parser::Parser::new(&tokens).parse() {
-        Ok(a) => a,
-        Err(e) => {
-            e.render(&mut stdout(), &lines)?;
-            panic!("Failed to parse");
-        }
-    };
+
+    let tokens = lexer::Lexer::new(&bytes).lex().map_err(|e| {
+        let _ = e.render(&mut stdout(), &lines);
+        "Failed to tokenize"
+    })?;
+
+    let ast = parser::Parser::new(&tokens).parse().map_err(|e| {
+        let _ = e.render(&mut stdout(), &lines);
+        "Failed to parse"
+    })?;
+
     let mut buf = Vec::with_capacity(256);
     let mut ctx = Ctx::new();
     Script::new(&mut buf)?.add_instructions(

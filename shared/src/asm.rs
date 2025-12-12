@@ -6,22 +6,32 @@ pub enum Instruction {
     ADD,
     SUB,
     ST { addr: u8 },
+    LD { addr: u8 },
     ROL { imm: u8 },
     HALT,
 }
 
 impl Instruction {
-    pub fn encode(&self) -> u8 {
-        match self {
+    pub fn encode(&self) -> Option<u8> {
+        Some(match self {
             Instruction::NOP => 0x00,
-            Instruction::LOADI { imm } => (0x1 << 4) | (imm & 0xF),
+            Instruction::LOADI { imm } => {
+                (0x1 << 4) | if *imm > 0xF { return None } else { imm & 0xF }
+            }
             Instruction::MOV => 0x2 << 4,
             Instruction::ADD => 0x3 << 4,
             Instruction::SUB => 0x4 << 4,
-            Instruction::ST { addr } => (0x5 << 4) | (addr & 0xF),
-            Instruction::ROL { imm } => (0x6 << 4) | (imm & 0xF),
-            Instruction::HALT => 0x70,
-        }
+            Instruction::ST { addr } => {
+                (0x5 << 4) | if *addr > 0xF { return None } else { addr & 0xF }
+            }
+            Instruction::LD { addr } => {
+                (0x6 << 4) | if *addr > 0xF { return None } else { addr & 0xF }
+            }
+            Instruction::ROL { imm } => {
+                (0x7 << 4) | if *imm > 0xF { return None } else { imm & 0xF }
+            }
+            Instruction::HALT => 0x80,
+        })
     }
 
     /// this is lossy, meaning there is only support for looking instructions up by their textual
@@ -34,10 +44,25 @@ impl Instruction {
             "ADD" => Self::ADD,
             "SUB" => Self::SUB,
             "ST" => Self::ST { addr: 0 },
+            "LD" => Self::LD { addr: 0 },
             "ROL" => Self::ROL { imm: 0 },
             "HALT" => Self::HALT,
             _ => return Err(format!("Invalid instruction {:?}", s)),
         })
+    }
+
+    pub fn to_str_lossy(&self) -> &'static str {
+        match self {
+            Self::NOP => "NOP",
+            Self::LOADI { .. } => "LOADI",
+            Self::MOV => "MOV",
+            Self::ADD => "ADD",
+            Self::SUB => "SUB",
+            Self::ST { .. } => "ST",
+            Self::LD { .. } => "LD",
+            Self::ROL { .. } => "ROL",
+            Self::HALT => "HALT",
+        }
     }
 
     pub fn decode(b: u8) -> Result<Self, &'static str> {
@@ -50,10 +75,33 @@ impl Instruction {
             0x3 => Self::ADD,
             0x4 => Self::SUB,
             0x5 => Self::ST { addr: imm },
-            0x6 => Self::ROL { imm },
-            0x7 => Self::HALT,
+            0x6 => Self::LD { addr: imm },
+            0x7 => Self::ROL { imm },
+            0x8 => Self::HALT,
             _ => return Err("unknown operator"),
         })
+    }
+
+    pub fn op(&self) -> u8 {
+        match self {
+            Instruction::NOP => 0x00,
+            Instruction::LOADI { .. } => 0x1 << 4,
+            Instruction::MOV => 0x2 << 4,
+            Instruction::ADD => 0x3 << 4,
+            Instruction::SUB => 0x4 << 4,
+            Instruction::ST { .. } => 0x5 << 4,
+            Instruction::LD { .. } => 0x6 << 4,
+            Instruction::ROL { .. } => 0x7 << 4,
+            Instruction::HALT => 0x80,
+        }
+    }
+
+    pub fn imm(&self) -> u8 {
+        (match self {
+            Self::ST { addr } | Self::LD { addr } => *addr,
+            Self::LOADI { imm } | Self::ROL { imm } => *imm,
+            _ => 0,
+        }) & 0xF
     }
 }
 
@@ -65,9 +113,13 @@ impl TryFrom<u8> for Instruction {
     }
 }
 
-impl From<Instruction> for u8 {
-    fn from(value: Instruction) -> Self {
-        value.encode()
+impl TryFrom<Instruction> for u8 {
+    type Error = &'static str;
+
+    fn try_from(value: Instruction) -> Result<Self, Self::Error> {
+        value
+            .encode()
+            .ok_or_else(|| "Failed to encode instruction, rhs too large")
     }
 }
 
@@ -84,12 +136,13 @@ mod tests {
             Instruction::ADD,
             Instruction::SUB,
             Instruction::ST { addr: 0xF },
+            Instruction::LD { addr: 0x4 },
             Instruction::ROL { imm: 0xF },
             Instruction::HALT,
         ];
 
         for inst in instructions {
-            let encoded: u8 = inst.encode();
+            let encoded: u8 = inst.encode().unwrap();
             let decoded =
                 Instruction::decode(encoded).expect(&format!("Failed to decode {:?}", inst));
             assert_eq!(inst, decoded);

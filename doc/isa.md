@@ -18,16 +18,17 @@
 
 ## Instructions
 
-| Mnemonic | Opcode | Operand | Description                    |
-| -------- | ------ | ------- | ------------------------------ |
-| NOP      | 0x0    | -       | No operation                   |
-| LOADI    | 0x1    | imm     | Load immediate into AC         |
-| MOV      | 0x2    | -       | AC -> DEST                     |
-| ADD      | 0x3    | -       | DEST += AC                     |
-| SUB      | 0x4    | -       | DEST -= AC                     |
-| ST       | 0x5    | -       | AC -> memory-mapped I/O (LEDs) |
-| ROL      | 0x6    | imm     | Rotate AC left by `imm` bits   |
-| HALT     | 0x7    | -       | Stop CPU                       |
+| Mnemonic | Opcode | Operand | Description                  |
+| -------- | ------ | ------- | ---------------------------- |
+| NOP      | 0x0    | -       | No operation                 |
+| LOADI    | 0x1    | imm     | Load immediate into AC       |
+| MOV      | 0x2    | -       | AC -> DEST                   |
+| ADD      | 0x3    | -       | DEST += AC                   |
+| SUB      | 0x4    | -       | DEST -= AC                   |
+| ST       | 0x5    | addr    | write AC into addr           |
+| LD       | 0x6    | imm     | load byte at addr into AC    |
+| ROL      | 0x7    | imm     | Rotate AC left by `imm` bits |
+| HALT     | 0x8    | -       | Stop CPU                     |
 
 **Instruction encoding:**
 

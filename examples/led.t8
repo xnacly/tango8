@@ -10,15 +10,16 @@
 .const off 0
 .const on 1
 
-; simple on/off LED
+; Write 1 to LED
     LOADI #on
-    ST [led]
+    ST [led]        ; AC -> mem[0xF]
+
+; Toggle LED off
     LOADI #off
     ST [led]
-    HALT
 
-; 8 leds mapped at 'led'
-    LOADI #0xD  ; 0b00001101
-    ST [led]    ; LEDs 0,2,3 on
+; Demonstrate writing a pattern to multiple LEDs
+    LOADI #0xD      ; AC = 0b1101
+    ST [led]        ; write pattern to mem[0xF]
 
     HALT

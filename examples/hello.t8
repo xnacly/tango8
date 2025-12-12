@@ -1,0 +1,48 @@
+; vim: filetype=asm
+; Write "HELLO" to memory starting at 0x0
+
+; this example is equivalent to hello.lisp
+
+.const stdout 0x0
+
+; H = 0x48
+LOADI #4      ; high part
+ROL 4         ; AC = 0x40
+MOV           ; DEST = AC
+LOADI #8      ; low part
+ADD           ; AC = 0x48
+ST [stdout]     ; memory[0x0] = 'H'
+
+; E = 0x45
+LOADI #4
+ROL 4         ; AC = 0x40
+MOV
+LOADI #5
+ADD           ; AC = 0x45
+ST [stdout]
+
+; L = 0x4C
+LOADI #4
+ROL 4         ; AC = 0x40
+MOV
+LOADI #12
+ADD           ; AC = 0x4C
+ST [stdout]
+
+; L = 0x4C
+LOADI #4
+ROL 4         ; AC = 0x40
+MOV
+LOADI #12
+ADD           ; AC = 0x4C
+ST [stdout]
+
+; O = 0x4F
+LOADI #4
+ROL 4         ; AC = 0x40
+MOV
+LOADI #15
+ADD           ; AC = 0x4F
+ST [stdout]
+
+HALT
