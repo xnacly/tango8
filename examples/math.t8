@@ -24,7 +24,7 @@
 
 ; Rotate left 1 to multiply by 2
     LOADI #0x1
-    ROL #1      ; AC = 0x1 rotated left 1 -> 0x2
+    ROL1        ; AC = 0x1 rotated left 1 -> 0x2
     ADD         ; DEST = 17 + 2 = 19
 
     HALT

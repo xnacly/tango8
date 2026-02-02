@@ -12,10 +12,7 @@ impl TryFrom<&[u8]> for Builtin {
     fn try_from(value: &[u8]) -> Result<Self, Self::Error> {
         match value {
             b"const" => Ok(Self::Const),
-            _ => Err(format!(
-                "Unknown builtin `{}`",
-                String::from_utf8_lossy(value)
-            )),
+            _ => Err("Invalid builtin".into()),
         }
     }
 }
@@ -27,6 +24,9 @@ pub enum Node<'node> {
         kind: Builtin,
         lhs: &'node str,
         rhs: Box<Node<'node>>,
+    },
+    Label {
+        name: &'node str,
     },
     /// <instruction> <rhs>
     Instruction {
@@ -53,7 +53,17 @@ pub struct Parser<'parser> {
 
 macro_rules! cur {
     ($l:ident) => {
-        $l.src[$l.pos]
+        $l.src.get($l.pos).ok_or_else(|| T8Err {
+            line: 0,
+            col: 0,
+            msg: "Unexpected End of File".into(),
+        })?
+    };
+}
+
+macro_rules! next {
+    ($l:ident) => {
+        $l.src.get($l.pos + 1)
     };
 }
 
@@ -73,12 +83,92 @@ impl<'parser> Parser<'parser> {
     }
 
     fn err<S: Into<String>>(&self, msg: S) -> T8Err {
-        let Token { line, col, .. } = cur!(self);
+        let Token { line, col, .. } = self.src.get(self.pos).unwrap_or_else(|| &Token {
+            line: 0,
+            col: 0,
+            inner: TokenInner::Eof,
+        });
         T8Err {
-            line,
-            col,
+            line: *line,
+            col: *col,
             msg: msg.into(),
         }
+    }
+
+    fn parse_rhs(&mut self) -> Result<Node<'parser>, T8Err> {
+        let Token { inner, line, col } = cur!(self);
+        Ok(match inner {
+            TokenInner::Ident(ident) => {
+                advance!(self);
+                Node::Ident {
+                    pos: (*line, *col),
+                    inner: str::from_utf8(ident).unwrap(),
+                }
+            }
+            TokenInner::Hash => {
+                // skip #
+                advance!(self);
+                let inner = match cur!(self).inner {
+                    TokenInner::Number(n) => Node::Number(n),
+                    _ => {
+                        return Err(self.err("Invalid inner literal, wanted number"));
+                    }
+                };
+                // skip number or ident
+                advance!(self);
+                Node::Literal(Box::new(inner))
+            }
+            TokenInner::LeftBraket => {
+                // skip [
+                advance!(self);
+                let inner = match cur!(self).inner {
+                    TokenInner::Number(n) => Node::Number(n),
+                    TokenInner::Ident(ident) => Node::Ident {
+                        pos: (*line, *col),
+                        inner: str::from_utf8(ident).unwrap(),
+                    },
+                    _ => {
+                        return Err(self.err("Invalid inner addr, wanted ident or number"));
+                    }
+                };
+
+                let Token { line, col, .. } = cur!(self);
+
+                // skip inner
+                advance!(self);
+
+                let addr = Node::Addr(Box::new(inner));
+                if self.src.get(self.pos)
+                    != Some(&Token {
+                        inner: TokenInner::RightBraket,
+                        line: *line,
+                        col: *col,
+                    })
+                {
+                    return Err({
+                        T8Err {
+                            line: *line,
+                            col: *col,
+                            msg: "`]` postfix needed for addr syntax".into(),
+                        }
+                    });
+                }
+
+                // skip ]
+                advance!(self);
+                addr
+            }
+            TokenInner::Number(n) => {
+                advance!(self);
+                Node::Number(*n)
+            }
+            _ => {
+                return Err(self.err(format!(
+                    "Unexpected token `{:?}` at this point",
+                    cur!(self).inner
+                )));
+            }
+        })
     }
 
     fn parse_one(&mut self) -> Result<Node<'parser>, T8Err> {
@@ -95,7 +185,7 @@ impl<'parser> Parser<'parser> {
                 msg: "Unexpected end of input".into(),
             });
         }
-        let Token { inner, line, col } = cur!(self);
+        let Token { inner, .. } = cur!(self);
         Ok(match inner {
             TokenInner::Builtin(name) => {
                 let kind = (*name).try_into().map_err(|e| self.err(e))?;
@@ -131,19 +221,42 @@ impl<'parser> Parser<'parser> {
                     rhs: Box::new(rhs),
                 }
             }
+            // <label>:
+            TokenInner::Ident(ident)
+                if matches!(
+                    next!(self),
+                    Some(Token {
+                        inner: TokenInner::Colon,
+                        ..
+                    })
+                ) =>
+            {
+                // skip ident
+                advance!(self);
+                // skip :
+                advance!(self);
+                Node::Label {
+                    name: str::from_utf8(ident).unwrap(),
+                }
+            }
             TokenInner::Ident(ident) => {
                 let partial = Instruction::from_str_lossy(str::from_utf8(ident).unwrap())
                     .map_err(|e| self.err(e))?;
+
                 // skip self
                 advance!(self);
 
                 let rhs = match &partial {
-                    Instruction::LOADI { .. }
-                    | Instruction::ST { .. }
-                    | Instruction::LD { .. }
-                    | Instruction::ROL { .. } => Some(Box::new(self.parse_one()?)),
+                    Instruction::LOADI { .. } | Instruction::ST { .. } | Instruction::LD { .. } => {
+                        if self.pos >= self.src.len() {
+                            return Err(self.err("Missing rhs"));
+                        }
+                        Some(Box::new(self.parse_rhs()?))
+                    }
                     // explicitly None so the compiler wont let me skip this when adding new ones
                     Instruction::NOP
+                    | Instruction::JMP
+                    | Instruction::ROL1
                     | Instruction::MOV
                     | Instruction::ADD
                     | Instruction::SUB
@@ -151,68 +264,12 @@ impl<'parser> Parser<'parser> {
                 };
                 Node::Instruction { partial, rhs }
             }
-            TokenInner::Hash => {
-                // skip #
-                advance!(self);
-                let inner = match cur!(self).inner {
-                    TokenInner::Number(n) => Node::Number(n),
-                    TokenInner::Ident(ident) => Node::Ident {
-                        pos: (line, col),
-                        inner: str::from_utf8(ident).unwrap(),
-                    },
-                    _ => {
-                        return Err(self.err("Invalid inner literal, wanted ident or number"));
-                    }
-                };
-                // skip number or ident
-                advance!(self);
-                Node::Literal(Box::new(inner))
+            _ => {
+                return Err(self.err(format!(
+                    "Unkown token type `{:?}` at this point",
+                    cur!(self)
+                )));
             }
-            TokenInner::LeftBraket => {
-                // skip [
-                advance!(self);
-                let inner = match cur!(self).inner {
-                    TokenInner::Number(n) => Node::Number(n),
-                    TokenInner::Ident(ident) => Node::Ident {
-                        pos: (line, col),
-                        inner: str::from_utf8(ident).unwrap(),
-                    },
-                    _ => {
-                        return Err(self.err("Invalid inner addr, wanted ident or number"));
-                    }
-                };
-
-                let Token { line, col, .. } = cur!(self);
-
-                // skip inner
-                advance!(self);
-
-                let addr = Node::Addr(Box::new(inner));
-                if self.src.get(self.pos)
-                    != Some(&Token {
-                        inner: TokenInner::RightBraket,
-                        line,
-                        col,
-                    })
-                {
-                    return Err({
-                        T8Err {
-                            line,
-                            col,
-                            msg: "`]` postfix needed for addr syntax".into(),
-                        }
-                    });
-                }
-
-                // skip ]
-                advance!(self);
-                addr
-            }
-            TokenInner::Number(n) => {
-                advance!(self);
-                Node::Number(n)
-            }
-            _ => return Err(self.err(format!("Unkown token type {:?}", cur!(self)))),
         })
     }
 
@@ -251,20 +308,27 @@ mod tests {
 
     #[test]
     fn test_loadi_literal_ident() {
-        let tokens = Lexer::new("LOADI #foo".as_bytes())
+        let tokens = Lexer::new(".const foo 0xF\nLOADI foo".as_bytes())
             .lex()
             .expect("lex failed");
         let ast = Parser::new(&tokens).parse().expect("parse failed");
 
         assert_eq!(
             ast,
-            vec![Node::Instruction {
-                partial: Instruction::LOADI { imm: 0 },
-                rhs: Some(Box::new(Node::Literal(Box::new(Node::Ident {
-                    pos: (0, 6),
-                    inner: "foo"
-                })))),
-            }]
+            vec![
+                Node::Builtin {
+                    kind: Builtin::Const,
+                    lhs: "foo",
+                    rhs: Box::new(Node::Number(15))
+                },
+                Node::Instruction {
+                    partial: Instruction::LOADI { imm: 0 },
+                    rhs: Some(Box::new(Node::Ident {
+                        pos: (1, 10),
+                        inner: "foo"
+                    }))
+                }
+            ]
         );
     }
 
@@ -317,7 +381,7 @@ mod tests {
     fn test_small_program() {
         let src = "
 .const led 0xF
-LOADI #led
+LOADI led
 ST [led]
 HALT
         ";
@@ -331,25 +395,25 @@ HALT
                 Node::Builtin {
                     kind: Builtin::Const,
                     lhs: "led",
-                    rhs: Box::new(Node::Number(0xF)),
+                    rhs: Box::new(Node::Number(15))
                 },
                 Node::Instruction {
                     partial: Instruction::LOADI { imm: 0 },
-                    rhs: Some(Box::new(Node::Literal(Box::new(Node::Ident {
-                        pos: (2, 7),
+                    rhs: Some(Box::new(Node::Ident {
+                        pos: (2, 10),
                         inner: "led"
-                    })))),
+                    }))
                 },
                 Node::Instruction {
                     partial: Instruction::ST { addr: 0 },
                     rhs: Some(Box::new(Node::Addr(Box::new(Node::Ident {
                         pos: (3, 4),
                         inner: "led"
-                    })))),
+                    }))))
                 },
                 Node::Instruction {
                     partial: Instruction::HALT,
-                    rhs: None,
+                    rhs: None
                 }
             ]
         );

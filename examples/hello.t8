@@ -6,43 +6,38 @@
 .const stdout 0x0
 
 ; H = 0x48
-LOADI #4      ; high part
-ROL 4         ; AC = 0x40
-MOV           ; DEST = AC
-LOADI #8      ; low part
-ADD           ; AC = 0x48
-ST [stdout]     ; memory[0x0] = 'H'
+LOADI #0x40    ; load high nibble directly
+MOV            ; DEST = AC
+LOADI #0x08    ; low nibble
+ADD            ; AC = 0x48
+ST [stdout]    ; memory[0x0] = 'H'
 
 ; E = 0x45
-LOADI #4
-ROL 4         ; AC = 0x40
+LOADI #0x40
 MOV
-LOADI #5
-ADD           ; AC = 0x45
+LOADI #0x05
+ADD            ; AC = 0x45
 ST [stdout]
 
 ; L = 0x4C
-LOADI #4
-ROL 4         ; AC = 0x40
+LOADI #0x40
 MOV
-LOADI #12
-ADD           ; AC = 0x4C
+LOADI #0x0C
+ADD            ; AC = 0x4C
 ST [stdout]
 
 ; L = 0x4C
-LOADI #4
-ROL 4         ; AC = 0x40
+LOADI #0x40
 MOV
-LOADI #12
-ADD           ; AC = 0x4C
+LOADI #0x0C
+ADD
 ST [stdout]
 
 ; O = 0x4F
-LOADI #4
-ROL 4         ; AC = 0x40
+LOADI #0x40
 MOV
-LOADI #15
-ADD           ; AC = 0x4F
+LOADI #0x0F
+ADD
 ST [stdout]
 
 HALT

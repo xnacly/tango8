@@ -4,9 +4,7 @@ use std::{
     io::Write,
 };
 
-use shared::asm::Instruction;
-
-use crate::config::Config;
+use shared::{asm::Instruction, config::Config};
 
 #[derive(Debug)]
 pub struct Cpu<'cpu> {
@@ -80,6 +78,7 @@ impl<'cpu> Cpu<'cpu> {
 
         match cur {
             Instruction::NOP => {}
+            Instruction::JMP => self.pc = self.ac,
             Instruction::HALT => self.halted = true,
             Instruction::LOADI { imm } => self.ac = *imm,
             Instruction::MOV => self.dest = self.ac,
@@ -87,7 +86,7 @@ impl<'cpu> Cpu<'cpu> {
             Instruction::SUB => self.ac = self.dest.wrapping_sub(self.ac),
             Instruction::ST { addr } => self.dump(*addr, self.ac)?,
             Instruction::LD { addr } => self.ac = *self.mem.get(*addr as usize)?,
-            Instruction::ROL { imm } => self.ac = self.ac.rotate_left((*imm & 0xF) as u32),
+            Instruction::ROL1 => self.ac = self.ac.rotate_left(1),
         }
         self.pc += 1;
 

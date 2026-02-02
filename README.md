@@ -8,7 +8,7 @@
 - Single accumulator (AC) + 1 destination register (DEST)
 - Fixed-length 8-bit instructions
 - Memory-mapped I/O
-- No branching, interrupts, or stack in v1 (pure math engine)
+- No interrupts, or stack in v1 (math engine)
 
 See [doc](./doc/isa.md) for ISA documentation.
 
@@ -17,7 +17,7 @@ See [doc](./doc/isa.md) for ISA documentation.
 - [`as`](./as):  assemble .t8 files into .t8b binary files
 - [`dis`](./dis): disassemble .t8b files, roundtrip with `asm`
 - [`emu`](./emu): emulate .t8b 
-- [`cc`](./cc): compiler for minimalist lisp abstraction over the asm
+- [`cc`](./cc): compiler for minimalist lisp abstraction
 
 ## Usage
 
@@ -39,11 +39,11 @@ file = "led.log" # and forward all writes to led.log
 .const on 1
 
 ; Write 1 to LED
-    LOADI #on
+    LOADI on
     ST [led]        ; AC -> mem[0xF]
 
 ; Toggle LED off
-    LOADI #off
+    LOADI off
     ST [led]
 
 ; Demonstrate writing a pattern to multiple LEDs

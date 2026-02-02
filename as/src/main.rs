@@ -1,11 +1,12 @@
 #![allow(dead_code)]
 use std::{
     fs,
+    io::Write,
     io::{BufRead, stdout},
     path::Path,
 };
 
-use shared::scriptorium::Script;
+use shared::{config, scriptorium::Script};
 
 use crate::interop::Ctx;
 
@@ -17,6 +18,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let input = std::env::args()
         .nth(1)
         .ok_or_else(|| "Missing .t8 asm file".to_string())?;
+
+    let config = config::Config::from_toml()?;
 
     let bytes = fs::read(&input)?;
     let lines = bytes.lines().flatten().collect::<Vec<_>>();
@@ -33,17 +36,26 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut buf = Vec::with_capacity(256);
     let mut ctx = Ctx::new();
-    Script::new(&mut buf)?.add_instructions(
-        &ast.into_iter()
-            .flat_map(|n| {
-                ctx.node_to_instruction(n)
-                    .map_err(|e| {
-                        e.render(&mut stdout(), &lines).unwrap();
-                    })
-                    .expect("Failed to lower ast to instructions")
-            })
-            .collect::<Vec<_>>(),
-    )?;
+    let instructions = &ast
+        .into_iter()
+        .flat_map(|n| {
+            ctx.node_to_instruction(n)
+                .map_err(|e| {
+                    e.render(&mut stdout(), &lines).unwrap();
+                })
+                .expect("Failed to lower ast to instructions")
+        })
+        .collect::<Vec<_>>();
+
+    Script::new(&mut buf)?.add_instructions(&instructions)?;
+
+    if config.verbose {
+        if let Ok(buf) = shared::asm::dis(&instructions) {
+            let mut handle = std::io::stdout().lock();
+            handle.write_all(&buf)?;
+            handle.flush()?;
+        }
+    }
 
     let mut path = Path::new(&input).to_path_buf();
     path.set_extension("t8b");

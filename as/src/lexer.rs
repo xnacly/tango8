@@ -18,23 +18,27 @@ pub struct Token<'tok> {
 
 #[derive(PartialEq, Eq, Clone, Copy)]
 pub enum TokenInner<'tok> {
+    Eof,
     Ident(&'tok [u8]),
     Builtin(&'tok [u8]),
     Hash,
     LeftBraket,
     RightBraket,
+    Colon,
     Number(u8),
 }
 
 impl<'tok> fmt::Debug for TokenInner<'tok> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            TokenInner::Eof => write!(f, "EOF"),
             TokenInner::Ident(name) => write!(f, "Ident({})", String::from_utf8_lossy(name)),
             TokenInner::Builtin(name) => write!(f, "Builtin({})", String::from_utf8_lossy(name)),
             TokenInner::Hash => write!(f, "Hash"),
             TokenInner::LeftBraket => write!(f, "LeftBracket"),
             TokenInner::RightBraket => write!(f, "RightBracket"),
             TokenInner::Number(n) => write!(f, "Number({})", n),
+            TokenInner::Colon => write!(f, ":"),
         }
     }
 }
@@ -112,6 +116,10 @@ impl<'lex> Lexer<'lex> {
                     toks.push(self.tok(TokenInner::Hash));
                     self.advance()
                 }
+                ':' => {
+                    toks.push(self.tok(TokenInner::Colon));
+                    self.advance()
+                }
                 '[' => {
                     toks.push(self.tok(TokenInner::LeftBraket));
                     self.advance()
@@ -142,7 +150,7 @@ impl<'lex> Lexer<'lex> {
                 }
                 'a'..='z' | 'A'..='Z' => {
                     let start = self.pos;
-                    while self.cur().is_some_and(|b| b.is_ascii_alphabetic()) {
+                    while self.cur().is_some_and(|b| b.is_ascii_alphanumeric()) {
                         self.advance()
                     }
                     toks.push(self.tok(TokenInner::Ident(&self.src[start..self.pos])))

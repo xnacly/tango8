@@ -5,3 +5,4 @@ pub mod err;
 /// t8cpu machine code packing
 pub mod scriptorium;
 
+pub mod config;
