@@ -8,10 +8,10 @@ use std::{
 
 use shared::{config, scriptorium::Script};
 
-use crate::interop::Ctx;
+use crate::lower::Ctx;
 
-mod interop;
 mod lexer;
+mod lower;
 mod parser;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
