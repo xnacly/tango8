@@ -1,23 +1,21 @@
 # tango8
 
-> 8-bit accumulator-based CPU and tooling designed for educational and hobbyist hardware projects without going insane. 
+Stack of tools around an 8bit cpu inspried by the Intel 8008 and VEB U808
 
 ## Overview
 
-- Minimal instruction set (7 instructions)
-- Single accumulator (AC) + 1 destination register (DEST)
 - Fixed-length 8-bit instructions
 - Memory-mapped I/O
-- No interrupts, or stack in v1 (math engine)
+- No interrupts, or stack
+- No subroutine calls, no state restoration
 
-See [doc](./doc/isa.md) for ISA documentation.
+See [doc](./doc/isa.md) for ISA and general documentation.
 
-## Components
+## Tools
 
 - [`as`](./as):  assemble .t8 files into .t8b binary files
 - [`dis`](./dis): disassemble .t8b files, roundtrip with `asm`
-- [`emu`](./emu): emulate .t8b 
-- [`cc`](./cc): compiler for minimalist lisp abstraction
+- [`emu`](./emu): emulate .t8b files
 
 ## Usage
 
@@ -33,65 +31,20 @@ file = "led.log" # and forward all writes to led.log
 2. Write asm interacting with said device (see [examples](./examples)):
 
 ```asm
-
-.const led 0xF
-.const off 0
-.const on 1
-
-; Write 1 to LED
-    LOADI on
-    ST [led]        ; AC -> mem[0xF]
-
-; Toggle LED off
-    LOADI off
-    ST [led]
-
-; Demonstrate writing a pattern to multiple LEDs
-    LOADI #0xD      ; AC = 0b1101
-    ST [led]        ; write pattern to mem[0xF]
-
-    HALT
 ```
 
 3. Assemble via `cargo run -p as examples/led.t8`.
 4. Execute via `cargo run -p emu examples/led.t8.t8b`.
 
 ```text
-0000: 0x11    LOADI (op=0x10, imm=0x1) [ac=0x0,dest=0x0]
-0001: 0x5F       ST (op=0x50, imm=0xF) [ac=0x1,dest=0x0]
-0002: 0x10    LOADI (op=0x10, imm=0x0) [ac=0x1,dest=0x0]
-0003: 0x5F       ST (op=0x50, imm=0xF) [ac=0x0,dest=0x0]
-0004: 0x1D    LOADI (op=0x10, imm=0xD) [ac=0x0,dest=0x0]
-0005: 0x5F       ST (op=0x50, imm=0xF) [ac=0xD,dest=0x0]
-0006: 0x80     HALT (op=0x80, imm=0x0) [ac=0xD,dest=0x0]
 ```
 
 5. Inspect created `led.log` and all bytes send there:
 
 ```shell
-$ hexdump -C led.log
-00000000  01 00 0d                                          |...|
-00000003
 ```
 
 6. Disassemble `led.t8.t8b` via `cargo run -p dis examples/led.t8.t8b`:
 
 ```asm
-; magic=t8cpu
-; size=7
-
-; 0000: 0x11 (op=0x10, imm=0x1)
-LOADI 1
-; 0001: 0x5F (op=0x50, imm=0xF)
-ST 15
-; 0002: 0x10 (op=0x10, imm=0x0)
-LOADI 0
-; 0003: 0x5F (op=0x50, imm=0xF)
-ST 15
-; 0004: 0x1D (op=0x10, imm=0xD)
-LOADI 13
-; 0005: 0x5F (op=0x50, imm=0xF)
-ST 15
-; 0006: 0x80 (op=0x80, imm=0x0)
-HALT
 ```
