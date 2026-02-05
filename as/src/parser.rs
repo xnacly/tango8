@@ -18,32 +18,34 @@ impl TryFrom<&[u8]> for Builtin {
 }
 
 #[derive(Debug, PartialEq, Eq)]
-pub enum Node<'node> {
+pub struct Node<'node> {
+    pub inner: InnerNode<'node>,
+    pub col: usize,
+    pub line: usize,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum InnerNode<'node> {
     /// .<kind> <lhs> <rhs>
     Builtin {
         kind: Builtin,
         lhs: &'node str,
         rhs: Box<Node<'node>>,
     },
-    Label {
-        name: &'node str,
-    },
+    Label(&'node str),
     /// <instruction> <rhs>
     Instruction {
         /// partial since this does not include inner values, only the name -> instruction lookup
         /// is done at this point
-        partial: Instruction,
+        name: Instruction,
         rhs: Option<Box<Node<'node>>>,
     },
     /// #<literal>
     Literal(Box<Node<'node>>),
     /// [<addr>]
     Addr(Box<Node<'node>>),
-    Number(u8),
-    Ident {
-        pos: (usize, usize),
-        inner: &'node str,
-    },
+    Number(usize),
+    Ident(&'node str),
 }
 
 pub struct Parser<'parser> {
@@ -88,6 +90,7 @@ impl<'parser> Parser<'parser> {
             col: 0,
             inner: TokenInner::Eof,
         });
+
         T8Err {
             line: *line,
             col: *col,
@@ -95,38 +98,68 @@ impl<'parser> Parser<'parser> {
         }
     }
 
+    fn mk(&self, tok: &Token<'parser>, inner: InnerNode<'parser>) -> Node<'parser> {
+        Node {
+            inner,
+            col: tok.col,
+            line: tok.line,
+        }
+    }
+
+    fn parse_int(&mut self) -> Result<Node<'parser>, T8Err> {
+        let Token {
+            inner: TokenInner::Number(view),
+            ..
+        } = cur!(self)
+        else {
+            unreachable!()
+        };
+
+        // strip 0x prefix, since rust ::parse<usize>() doesnt get it
+        let num = if view.starts_with(b"0x") {
+            let as_str = str::from_utf8(&view[2..view.len()]).unwrap();
+            usize::from_str_radix(as_str, 16)
+                .map_err(|e: std::num::ParseIntError| self.err(e.to_string()))?
+        } else {
+            let as_str = str::from_utf8(view).unwrap();
+            as_str
+                .parse()
+                .map_err(|e: std::num::ParseIntError| self.err(e.to_string()))?
+        };
+
+        Ok(self.mk(cur!(self), InnerNode::Number(num)))
+    }
+
     fn parse_rhs(&mut self) -> Result<Node<'parser>, T8Err> {
-        let Token { inner, line, col } = cur!(self);
-        Ok(match inner {
+        Ok(match cur!(self).inner {
             TokenInner::Ident(ident) => {
+                let tok = cur!(self);
                 advance!(self);
-                Node::Ident {
-                    pos: (*line, *col),
-                    inner: str::from_utf8(ident).unwrap(),
-                }
+                self.mk(tok, InnerNode::Ident(str::from_utf8(ident).unwrap()))
             }
             TokenInner::Hash => {
+                let tok = cur!(self);
                 // skip #
                 advance!(self);
                 let inner = match cur!(self).inner {
-                    TokenInner::Number(n) => Node::Number(n),
+                    TokenInner::Number(_) => self.parse_int()?,
                     _ => {
                         return Err(self.err("Invalid inner literal, wanted number"));
                     }
                 };
+
                 // skip number or ident
                 advance!(self);
-                Node::Literal(Box::new(inner))
+                self.mk(tok, InnerNode::Literal(Box::new(inner)))
             }
             TokenInner::LeftBraket => {
                 // skip [
                 advance!(self);
                 let inner = match cur!(self).inner {
-                    TokenInner::Number(n) => Node::Number(n),
-                    TokenInner::Ident(ident) => Node::Ident {
-                        pos: (*line, *col),
-                        inner: str::from_utf8(ident).unwrap(),
-                    },
+                    TokenInner::Number(_) => self.parse_int()?,
+                    TokenInner::Ident(ident) => {
+                        self.mk(cur!(self), InnerNode::Ident(str::from_utf8(ident).unwrap()))
+                    }
                     _ => {
                         return Err(self.err("Invalid inner addr, wanted ident or number"));
                     }
@@ -137,7 +170,7 @@ impl<'parser> Parser<'parser> {
                 // skip inner
                 advance!(self);
 
-                let addr = Node::Addr(Box::new(inner));
+                let addr = self.mk(cur!(self), InnerNode::Addr(Box::new(inner)));
                 if self.src.get(self.pos)
                     != Some(&Token {
                         inner: TokenInner::RightBraket,
@@ -158,9 +191,10 @@ impl<'parser> Parser<'parser> {
                 advance!(self);
                 addr
             }
-            TokenInner::Number(n) => {
+            TokenInner::Number(_) => {
+                let i = self.parse_int()?;
                 advance!(self);
-                Node::Number(*n)
+                i
             }
             _ => {
                 return Err(self.err(format!(
@@ -185,9 +219,10 @@ impl<'parser> Parser<'parser> {
                 msg: "Unexpected end of input".into(),
             });
         }
-        let Token { inner, .. } = cur!(self);
-        Ok(match inner {
+
+        Ok(match cur!(self).inner {
             TokenInner::Builtin(name) => {
+                let tok = cur!(self);
                 let kind = (*name).try_into().map_err(|e| self.err(e))?;
                 // skip .<kind>
                 advance!(self);
@@ -205,7 +240,7 @@ impl<'parser> Parser<'parser> {
 
                 let rhs = match kind {
                     Builtin::Const => match cur!(self).inner {
-                        TokenInner::Number(n) => Node::Number(n),
+                        TokenInner::Number(_) => self.parse_int()?,
                         _ => {
                             return Err(self.err("Invalid rhs for .const, wanted number"));
                         }
@@ -215,11 +250,14 @@ impl<'parser> Parser<'parser> {
                 // skip argument
                 advance!(self);
 
-                Node::Builtin {
-                    kind,
-                    lhs,
-                    rhs: Box::new(rhs),
-                }
+                self.mk(
+                    tok,
+                    InnerNode::Builtin {
+                        kind,
+                        lhs,
+                        rhs: Box::new(rhs),
+                    },
+                )
             }
             // <label>:
             TokenInner::Ident(ident)
@@ -231,15 +269,16 @@ impl<'parser> Parser<'parser> {
                     })
                 ) =>
             {
+                let tok = cur!(self);
                 // skip ident
                 advance!(self);
                 // skip :
                 advance!(self);
-                Node::Label {
-                    name: str::from_utf8(ident).unwrap(),
-                }
+
+                self.mk(tok, InnerNode::Label(str::from_utf8(ident).unwrap()))
             }
             TokenInner::Ident(ident) => {
+                let tok = cur!(self);
                 let partial = Instruction::from_str_lossy(str::from_utf8(ident).unwrap())
                     .map_err(|e| self.err(e))?;
 
@@ -262,7 +301,8 @@ impl<'parser> Parser<'parser> {
                     | Instruction::SUB
                     | Instruction::HALT => None,
                 };
-                Node::Instruction { partial, rhs }
+
+                self.mk(tok, InnerNode::Instruction { name: partial, rhs })
             }
             _ => {
                 return Err(self.err(format!(
@@ -296,14 +336,20 @@ mod tests {
 
         let ast = Parser::new(&tokens).parse().expect("parse failed");
 
-        assert_eq!(
-            ast,
-            vec![Node::Builtin {
-                kind: Builtin::Const,
-                lhs: "led",
-                rhs: Box::new(Node::Number(5)),
-            }]
-        );
+        assert!(matches!(
+            ast[..],
+            [Node {
+                inner: InnerNode::Builtin {
+                    kind: Builtin::Const,
+                    lhs: "led",
+                    rhs: ref rhs_node, // <- bind the Box
+                },
+                ..
+            }] if matches!(**rhs_node, Node {
+                inner: InnerNode::Number(5),
+                ..
+            })
+        ));
     }
 
     #[test]
@@ -311,25 +357,30 @@ mod tests {
         let tokens = Lexer::new(".const foo 0xF\nLOADI foo".as_bytes())
             .lex()
             .expect("lex failed");
+
         let ast = Parser::new(&tokens).parse().expect("parse failed");
 
-        assert_eq!(
-            ast,
-            vec![
-                Node::Builtin {
-                    kind: Builtin::Const,
-                    lhs: "foo",
-                    rhs: Box::new(Node::Number(15))
+        assert!(matches!(
+            ast[..],
+            [
+                Node {
+                    inner: InnerNode::Builtin {
+                        kind: Builtin::Const,
+                        lhs: "foo",
+                        rhs: ref const_rhs,
+                    },
+                    ..
                 },
-                Node::Instruction {
-                    partial: Instruction::LOADI { imm: 0 },
-                    rhs: Some(Box::new(Node::Ident {
-                        pos: (1, 10),
-                        inner: "foo"
-                    }))
+                Node {
+                    inner: InnerNode::Instruction {
+                        name: Instruction::LOADI { imm: 0 },
+                        rhs: Some(ref instr_rhs),
+                    },
+                    ..
                 }
-            ]
-        );
+            ] if matches!(**const_rhs, Node { inner: InnerNode::Number(15), .. })
+            && matches!(**instr_rhs, Node { inner: InnerNode::Ident("foo"), .. })
+        ));
     }
 
     #[test]
@@ -337,13 +388,22 @@ mod tests {
         let tokens = Lexer::new("LOADI #3".as_bytes()).lex().expect("lex failed");
         let ast = Parser::new(&tokens).parse().expect("parse failed");
 
-        assert_eq!(
-            ast,
-            vec![Node::Instruction {
-                partial: Instruction::LOADI { imm: 0 },
-                rhs: Some(Box::new(Node::Literal(Box::new(Node::Number(3))))),
-            }]
-        );
+        assert!(matches!(
+            ast[..],
+            [Node {
+                inner: InnerNode::Instruction {
+                    name: Instruction::LOADI { imm: 0 },
+                    rhs: Some(ref rhs),
+                },
+                ..
+            }] if matches!(**rhs, Node {
+                inner: InnerNode::Literal(ref boxed_num),
+                ..
+            } if matches!(**boxed_num, Node {
+                inner: InnerNode::Number(3),
+                ..
+            }))
+        ));
     }
 
     #[test]
@@ -351,16 +411,22 @@ mod tests {
         let tokens = Lexer::new("ST [led]".as_bytes()).lex().expect("lex failed");
         let ast = Parser::new(&tokens).parse().expect("parse failed");
 
-        assert_eq!(
-            ast,
-            vec![Node::Instruction {
-                partial: Instruction::ST { addr: 0 },
-                rhs: Some(Box::new(Node::Addr(Box::new(Node::Ident {
-                    pos: (0, 3),
-                    inner: "led"
-                })))),
-            }]
-        );
+        assert!(matches!(
+            ast[..],
+            [Node {
+                inner: InnerNode::Instruction {
+                    name: Instruction::ST { addr: 0 },
+                    rhs: Some(ref rhs),
+                },
+                ..
+            }] if matches!(**rhs, Node {
+                inner: InnerNode::Addr(ref boxed_node),
+                ..
+            } if matches!(**boxed_node, Node {
+                inner: InnerNode::Ident("led"),
+                ..
+            }))
+        ));
     }
 
     #[test]
@@ -368,13 +434,22 @@ mod tests {
         let tokens = Lexer::new("ST [5]".as_bytes()).lex().expect("lex failed");
         let ast = Parser::new(&tokens).parse().expect("parse failed");
 
-        assert_eq!(
-            ast,
-            vec![Node::Instruction {
-                partial: Instruction::ST { addr: 0 },
-                rhs: Some(Box::new(Node::Addr(Box::new(Node::Number(5))))),
-            }]
-        );
+        assert!(matches!(
+            ast[..],
+            [Node {
+                inner: InnerNode::Instruction {
+                    name: Instruction::ST { addr: 0 },
+                    rhs: Some(ref rhs),
+                },
+                ..
+            }] if matches!(**rhs, Node {
+                inner: InnerNode::Addr(ref boxed_node),
+                ..
+            } if matches!(**boxed_node, Node {
+                inner: InnerNode::Number(5),
+                ..
+            }))
+        ));
     }
 
     #[test]
@@ -385,38 +460,45 @@ LOADI led
 ST [led]
 HALT
         ";
-
         let tokens = Lexer::new(src.as_bytes()).lex().expect("lex failed");
         let ast = Parser::new(&tokens).parse().expect("parse failed");
 
-        assert_eq!(
-            ast,
-            vec![
-                Node::Builtin {
-                    kind: Builtin::Const,
-                    lhs: "led",
-                    rhs: Box::new(Node::Number(15))
+        assert!(matches!(
+            ast[..],
+            [
+                Node {
+                    inner: InnerNode::Builtin {
+                        kind: Builtin::Const,
+                        lhs: "led",
+                        rhs: ref rhs_builtin,
+                    },
+                    ..
                 },
-                Node::Instruction {
-                    partial: Instruction::LOADI { imm: 0 },
-                    rhs: Some(Box::new(Node::Ident {
-                        pos: (2, 10),
-                        inner: "led"
-                    }))
+                Node {
+                    inner: InnerNode::Instruction {
+                        name: Instruction::LOADI { imm: 0 },
+                        rhs: Some(ref rhs_loadi),
+                    },
+                    ..
                 },
-                Node::Instruction {
-                    partial: Instruction::ST { addr: 0 },
-                    rhs: Some(Box::new(Node::Addr(Box::new(Node::Ident {
-                        pos: (3, 4),
-                        inner: "led"
-                    }))))
+                Node {
+                    inner: InnerNode::Instruction {
+                        name: Instruction::ST { addr: 0 },
+                        rhs: Some(ref rhs_st),
+                    },
+                    ..
                 },
-                Node::Instruction {
-                    partial: Instruction::HALT,
-                    rhs: None
+                Node {
+                    inner: InnerNode::Instruction {
+                        name: Instruction::HALT,
+                        rhs: None,
+                    },
+                    ..
                 }
-            ]
-        );
+            ] if matches!(**rhs_builtin, Node { inner: InnerNode::Number(15), .. })
+            && matches!(**rhs_loadi, Node { inner: InnerNode::Ident("led"), .. })
+            && matches!(**rhs_st, Node { inner: InnerNode::Addr(ref boxed_node), .. } if matches!(**boxed_node, Node { inner: InnerNode::Ident ("led"), .. }))
+        ));
     }
 
     #[test]
