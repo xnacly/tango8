@@ -25,7 +25,8 @@ pub enum TokenInner<'tok> {
     LeftBraket,
     RightBraket,
     Colon,
-    Number(u8),
+    Comma,
+    Number(&'tok [u8]),
 }
 
 impl<'tok> fmt::Debug for TokenInner<'tok> {
@@ -37,8 +38,9 @@ impl<'tok> fmt::Debug for TokenInner<'tok> {
             TokenInner::Hash => write!(f, "Hash"),
             TokenInner::LeftBraket => write!(f, "LeftBracket"),
             TokenInner::RightBraket => write!(f, "RightBracket"),
-            TokenInner::Number(n) => write!(f, "Number({})", n),
+            TokenInner::Number(n) => write!(f, "Number({})", String::from_utf8_lossy(n)),
             TokenInner::Colon => write!(f, ":"),
+            TokenInner::Comma => write!(f, ","),
         }
     }
 }
@@ -112,6 +114,10 @@ impl<'lex> Lexer<'lex> {
                     }
                     toks.push(self.tok(TokenInner::Builtin(&self.src[start..self.pos])))
                 }
+                ',' => {
+                    toks.push(self.tok(TokenInner::Comma));
+                    self.advance()
+                }
                 '#' => {
                     toks.push(self.tok(TokenInner::Hash));
                     self.advance()
@@ -137,20 +143,14 @@ impl<'lex> Lexer<'lex> {
                     {
                         self.advance()
                     }
-                    let view = &self.src[start..self.pos];
-                    let as_str = str::from_utf8(view)
-                        .map_err(|_| self.err("Failed to call str::from_utf8"))?;
-                    let i = if view.get(1).is_some_and(|e| *e == b'x') {
-                        u8::from_str_radix(&as_str[2..as_str.len()], 16)
-                    } else {
-                        as_str.parse()
-                    }
-                    .map_err(|e| self.err(format!("{e}: `{as_str}`")))?;
-                    toks.push(self.tok(TokenInner::Number(i)))
+                    toks.push(self.tok(TokenInner::Number(&self.src[start..self.pos])))
                 }
                 'a'..='z' | 'A'..='Z' => {
                     let start = self.pos;
-                    while self.cur().is_some_and(|b| b.is_ascii_alphanumeric()) {
+                    while self
+                        .cur()
+                        .is_some_and(|b| b.is_ascii_alphanumeric() || b == &b'_')
+                    {
                         self.advance()
                     }
                     toks.push(self.tok(TokenInner::Ident(&self.src[start..self.pos])))
@@ -187,10 +187,10 @@ mod tests {
 .const on 1
 
 ; simple on/off LED
-    LOADI #off
+    LOADI off
     LD [led]
     ST [led]
-    LOADI #on
+    LOADI on
     ST [led]
     
 
@@ -205,15 +205,14 @@ mod tests {
         let expected = vec![
             TokenInner::Builtin(b"const"),
             TokenInner::Ident(b"led"),
-            TokenInner::Number(0xF),
+            TokenInner::Number(b"0xF"),
             TokenInner::Builtin(b"const"),
             TokenInner::Ident(b"off"),
-            TokenInner::Number(0),
+            TokenInner::Number(b"0"),
             TokenInner::Builtin(b"const"),
             TokenInner::Ident(b"on"),
-            TokenInner::Number(1),
+            TokenInner::Number(b"1"),
             TokenInner::Ident(b"LOADI"),
-            TokenInner::Hash,
             TokenInner::Ident(b"off"),
             TokenInner::Ident(b"LD"),
             TokenInner::LeftBraket,
@@ -224,7 +223,6 @@ mod tests {
             TokenInner::Ident(b"led"),
             TokenInner::RightBraket,
             TokenInner::Ident(b"LOADI"),
-            TokenInner::Hash,
             TokenInner::Ident(b"on"),
             TokenInner::Ident(b"ST"),
             TokenInner::LeftBraket,
@@ -232,7 +230,7 @@ mod tests {
             TokenInner::RightBraket,
             TokenInner::Ident(b"LOADI"),
             TokenInner::Hash,
-            TokenInner::Number(0xD),
+            TokenInner::Number(b"0xD"),
             TokenInner::Ident(b"ST"),
             TokenInner::LeftBraket,
             TokenInner::Ident(b"led"),
@@ -252,6 +250,121 @@ mod tests {
                 "Mismatch at token {}: got {:?}, expected {:?}",
                 i, got, exp
             );
+        }
+    }
+
+    #[test]
+    fn test_basic_tokens() {
+        let src = br#".const #label [ ] : , 123ABC"#;
+        let mut lexer = Lexer::new(src);
+        let tokens = lexer.lex().expect("Lexer failed");
+
+        let expected = vec![
+            TokenInner::Builtin(b"const"),
+            TokenInner::Hash,
+            TokenInner::Ident(b"label"),
+            TokenInner::LeftBraket,
+            TokenInner::RightBraket,
+            TokenInner::Colon,
+            TokenInner::Comma,
+            TokenInner::Number(b"123ABC"),
+        ];
+
+        assert_eq!(tokens.len(), expected.len(), "Token count mismatch");
+
+        for (i, (tok, exp)) in tokens.iter().zip(expected.iter()).enumerate() {
+            assert_eq!(
+                tok.inner, *exp,
+                "Token mismatch at {}: got {:?}, expected {:?}",
+                i, tok.inner, exp
+            );
+        }
+    }
+
+    #[test]
+    fn test_whitespace_and_comments() {
+        let src = br#"
+            ; comment line
+            LOADI #0 ; inline comment
+            ST [led]
+            "#;
+        let mut lexer = Lexer::new(src);
+        let tokens = lexer.lex().expect("Lexer failed");
+
+        let expected = vec![
+            TokenInner::Ident(b"LOADI"),
+            TokenInner::Hash,
+            TokenInner::Number(b"0"),
+            TokenInner::Ident(b"ST"),
+            TokenInner::LeftBraket,
+            TokenInner::Ident(b"led"),
+            TokenInner::RightBraket,
+        ];
+
+        assert_eq!(tokens.len(), expected.len(), "Token count mismatch");
+
+        for (i, (tok, exp)) in tokens.iter().zip(expected.iter()).enumerate() {
+            assert_eq!(
+                tok.inner, *exp,
+                "Token mismatch at {}: got {:?}, expected {:?}",
+                i, tok.inner, exp
+            );
+        }
+    }
+
+    #[test]
+    fn test_error_on_invalid_builtin() {
+        let src = br#".1invalid"#;
+        let mut lexer = Lexer::new(src);
+        let err = lexer.lex().unwrap_err();
+        assert!(err.msg.contains("A '.' requires a following builtin name"));
+    }
+
+    #[test]
+    fn test_error_on_unknown_char() {
+        let src = br#"@"#;
+        let mut lexer = Lexer::new(src);
+        let err = lexer.lex().unwrap_err();
+        assert!(err.msg.contains("Unkown character"));
+    }
+
+    #[test]
+    fn test_numbers_hex_and_decimal() {
+        let src = br#"0 1 12 0xA 0xFF"#;
+        let mut lexer = Lexer::new(src);
+        let tokens = lexer.lex().expect("Lexer failed");
+
+        let expected = vec![
+            TokenInner::Number(b"0"),
+            TokenInner::Number(b"1"),
+            TokenInner::Number(b"12"),
+            TokenInner::Number(b"0xA"),
+            TokenInner::Number(b"0xFF"),
+        ];
+
+        assert_eq!(tokens.len(), expected.len());
+
+        for (i, (tok, exp)) in tokens.iter().zip(expected.iter()).enumerate() {
+            assert_eq!(tok.inner, *exp, "Mismatch at {}: got {:?}", i, tok.inner);
+        }
+    }
+
+    #[test]
+    fn test_ident_and_builtins() {
+        let src = br#".const myLabel anotherLabel"#;
+        let mut lexer = Lexer::new(src);
+        let tokens = lexer.lex().expect("Lexer failed");
+
+        let expected = vec![
+            TokenInner::Builtin(b"const"),
+            TokenInner::Ident(b"myLabel"),
+            TokenInner::Ident(b"anotherLabel"),
+        ];
+
+        assert_eq!(tokens.len(), expected.len());
+
+        for (i, (tok, exp)) in tokens.iter().zip(expected.iter()).enumerate() {
+            assert_eq!(tok.inner, *exp, "Mismatch at {}: got {:?}", i, tok.inner);
         }
     }
 }

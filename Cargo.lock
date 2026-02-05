@@ -10,13 +10,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "cc"
-version = "0.1.0"
-dependencies = [
- "shared",
-]
-
-[[package]]
 name = "dis"
 version = "0.1.0"
 dependencies = [
